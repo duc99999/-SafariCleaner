@@ -130,6 +130,32 @@ jobs:
             | xargs -0 -I{} grep -l $'\r' "{}" 2>/dev/null | wc -l)
           echo "Files still with CRLF: $REMAINING"
 
+      - name: Fix permissions on DEBIAN maintainer scripts
+        run: |
+          echo "=== Current permissions of DEBIAN scripts ==="
+          ls -la ./layout/DEBIAN/ 2>/dev/null || echo "(no DEBIAN dir yet)"
+
+          for f in ./layout/DEBIAN/preinst ./layout/DEBIAN/postinst ./layout/DEBIAN/prerm ./layout/DEBIAN/postrm; do
+            if [ -f "$f" ]; then
+              chmod 0755 "$f"
+              echo "chmod 0755 $f -> $(stat -c '%a' "$f")"
+            fi
+          done
+
+          if [ -d ./layout/usr/bin ]; then
+            for f in ./layout/usr/bin/*; do
+              if [ -f "$f" ]; then
+                chmod 0755 "$f"
+                echo "chmod 0755 $f -> $(stat -c '%a' "$f")"
+              fi
+            done
+          fi
+
+          echo ""
+          echo "=== Permissions after fix ==="
+          ls -la ./layout/DEBIAN/ 2>/dev/null || true
+          ls -la ./layout/usr/bin/ 2>/dev/null || true
+
       - name: Build tweak (override TARGET)
         env:
           THEOS: ${{ github.workspace }}/.theos
