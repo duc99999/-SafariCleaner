@@ -156,7 +156,7 @@ jobs:
           ls -la ./layout/DEBIAN/ 2>/dev/null || true
           ls -la ./layout/usr/bin/ 2>/dev/null || true
 
-      - name: Build tweak (override TARGET)
+      - name: Build tweak package
         env:
           THEOS: ${{ github.workspace }}/.theos
         run: |
@@ -167,8 +167,7 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           rm -rf packages
 
-          sed -i.bak 's|iphone:clang:15.5:15.0|iphone:clang:latest:14.5|g' Makefile
-          echo "=== Patched Makefile TARGET line ==="
+          echo "=== Using Makefile as-is (TARGET already set to 14.5) ==="
           grep "^TARGET" Makefile || true
 
           echo "=== Cleaning ==="
