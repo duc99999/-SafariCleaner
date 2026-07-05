@@ -28,7 +28,7 @@
 #pragma mark - Action: Wipe
 
 - (void)wipeSafari:(id)sender {
-    BOOL keepBackup = [[self readPreferenceValue:@"keepBackup"] boolValue];
+    BOOL keepBackup = [[NSUserDefaults standardUserDefaults] boolForKey:@"keepBackup"];
 
     UIAlertController *confirm =
     [UIAlertController alertControllerWithTitle:@"Wipe Safari Now?"
@@ -41,11 +41,10 @@
                                                style:UIAlertActionStyleCancel
                                              handler:nil]];
 
-    __weak typeof(self) weakSelf = self;
     [confirm addAction:[UIAlertAction actionWithTitle:@"Wipe"
                                                style:UIAlertActionStyleDestructive
                                              handler:^(UIAlertAction * _Nonnull action) {
-        [weakSelf performWipeKeepingBackup:keepBackup];
+        [self performWipeKeepingBackup:keepBackup];
     }]];
 
     [self presentViewController:confirm animated:YES completion:nil];
