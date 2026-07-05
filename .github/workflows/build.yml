@@ -14,7 +14,7 @@ jobs:
   build:
     name: Build tweak package
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Checkout source
@@ -26,20 +26,7 @@ jobs:
           sudo apt-get install -y \
             build-essential clang g++ libssl-dev libplist-dev \
             libplist-utils libcurl4-openssl-dev libavahi-compat-libdnssd-dev \
-            fakeroot dpkg dpkg-dev gnupg curl wget git xz-utils perl file unzip ca-certificates
-
-      - name: Build ldid from xerub source
-        run: |
-          set -e
-          cd /tmp
-          rm -rf ldid
-          git clone --depth=1 https://github.com/xerub/ldid.git
-          cd ldid
-          chmod +x make.sh
-          ./make.sh
-          sudo cp ldid /usr/local/bin/ldid
-          sudo chmod +x /usr/local/bin/ldid
-          ldid -h 2>&1 | head -3 || echo "ldid installed"
+            fakeroot dpkg dpkg-dev gnupg curl wget git xz-utils perl file unzip ca-certificates zstd
 
       - name: Install Theos
         env:
@@ -49,7 +36,79 @@ jobs:
           echo "THEOS=$THEOS" >> "$GITHUB_ENV"
           echo "$THEOS/bin" >> "$GITHUB_PATH"
 
-      - name: Install iPhoneOS SDK (clone theos/sdks, symlink 15.5 to 15.6)
+      - name: Download iOS toolchain (CRKatri)
+        env:
+          THEOS: ${{ github.workspace }}/.theos
+        run: |
+          set -e
+          mkdir -p "$THEOS/toolchain/linux/iphone"
+          cd /tmp
+
+          # Thử nhiều URL theo thứ tự ưu tiên
+          declare -a URLS=(
+            "https://github.com/CRKatri/llvm-project/releases/download/swift-5.3.2-RELEASE/swift-5.3.2-RELEASE-ubuntu20.04.tar.zst"
+            "https://github.com/CRKatri/llvm-project/releases/download/swift-5.3.2-RELEASE/swift-5.3.2-RELEASE-ubuntu18.04.tar.zst"
+            "https://github.com/sbingner/llvm-project/releases/download/v10.0.0-2/linux-ios-arm64e-clang-toolchain.tar.lzma"
+          )
+
+          DOWNLOADED=""
+          for URL in "${URLS[@]}"; do
+            echo "=== Trying: $URL ==="
+            if curl -fL --retry 3 --retry-delay 5 -o toolchain.tar.zst "$URL" 2>/dev/null; then
+              DOWNLOADED="toolchain.tar.zst"
+              echo "=== Downloaded: $URL ==="
+              break
+            elif curl -fL --retry 3 --retry-delay 5 -o toolchain.tar.lzma "$URL" 2>/dev/null; then
+              DOWNLOADED="toolchain.tar.lzma"
+              echo "=== Downloaded (lzma): $URL ==="
+              break
+            fi
+          done
+
+          if [ -z "$DOWNLOADED" ]; then
+            echo "ERROR: All toolchain URLs failed"
+            exit 1
+          fi
+
+          echo "=== Extracting toolchain ==="
+          TMP_DIR=$(mktemp -d)
+          if [[ "$DOWNLOADED" == *.tar.zst ]]; then
+            tar --zstd -xf "$DOWNLOADED" -C "$TMP_DIR"
+          else
+            tar --lzma -xf "$DOWNLOADED" -C "$TMP_DIR"
+          fi
+
+          echo "=== Contents ==="
+          ls -la "$TMP_DIR"
+
+          # Tìm folder gốc của toolchain
+          TOOLCHAIN_ROOT=$(find "$TMP_DIR" -maxdepth 2 -name "bin" -type d | head -1 | xargs -I{} dirname {})
+          if [ -z "$TOOLCHAIN_ROOT" ]; then
+            # Fallback: lấy folder đầu tiên
+            TOOLCHAIN_ROOT=$(find "$TMP_DIR" -maxdepth 1 -mindepth 1 -type d | head -1)
+          fi
+
+          echo "=== Toolchain root: $TOOLCHAIN_ROOT ==="
+          cp -r "$TOOLCHAIN_ROOT"/* "$THEOS/toolchain/linux/iphone/"
+          chmod +x "$THEOS/toolchain/linux/iphone/bin/"* 2>/dev/null || true
+
+          echo "=== Toolchain installed ==="
+          ls -la "$THEOS/toolchain/linux/iphone/bin/" | head -20
+
+          # Cleanup
+          rm -rf "$TMP_DIR" "$DOWNLOADED"
+
+      - name: Verify toolchain
+        env:
+          THEOS: ${{ github.workspace }}/.theos
+        run: |
+          echo "=== Toolchain clang version ==="
+          "$THEOS/toolchain/linux/iphone/bin/clang" --version 2>&1 | head -3 || echo "clang not working"
+          echo ""
+          echo "=== ldid ==="
+          "$THEOS/toolchain/linux/iphone/bin/ldid" -h 2>&1 | head -3 || echo "ldid not working"
+
+      - name: Install iPhoneOS SDK (clone theos/sdks via LFS)
         env:
           THEOS: ${{ github.workspace }}/.theos
         run: |
@@ -57,7 +116,7 @@ jobs:
           SDK_DIR="$THEOS/sdks"
           mkdir -p "$SDK_DIR"
 
-          echo "=== Cloning theos/sdks (using git-lfs) ==="
+          echo "=== Cloning theos/sdks ==="
           rm -rf /tmp/sdks-official
           git clone https://github.com/theos/sdks.git /tmp/sdks-official
           cd /tmp/sdks-official
@@ -67,39 +126,19 @@ jobs:
           echo "=== Available SDKs ==="
           ls -d iPhoneOS*.sdk
 
-          # Ưu tiên 1: iPhoneOS15.5.sdk (không có trong repo này)
-          # Ưu tiên 2: iPhoneOS15.6.sdk (có sẵn, gần nhất với 15.5)
-          if [ -d "iPhoneOS15.5.sdk" ]; then
-            cp -r iPhoneOS15.5.sdk "$SDK_DIR/"
-            echo "=== Installed exact 15.5 ==="
-          elif [ -d "iPhoneOS15.6.sdk" ]; then
+          # Dùng iPhoneOS15.6.sdk làm 15.5 (gần nhất)
+          if [ -d "iPhoneOS15.6.sdk" ]; then
             cp -r iPhoneOS15.6.sdk "$SDK_DIR/iPhoneOS15.5.sdk"
-            echo "=== Installed 15.6 as 15.5 (symlink/copy) ==="
-
-            # Verify SDK có đầy đủ file quan trọng không
-            if [ ! -f "$SDK_DIR/iPhoneOS15.5.sdk/SDKSettings.plist" ]; then
-              echo "WARNING: SDKSettings.plist missing, SDK might be incomplete"
-            fi
+            echo "=== Installed iPhoneOS15.6.sdk as iPhoneOS15.5.sdk ==="
           else
-            echo "ERROR: No iOS 15.x SDK found"
-            ls -d iPhoneOS*.sdk
+            echo "ERROR: iPhoneOS15.6.sdk not found"
             exit 1
           fi
 
           echo "===== Installed SDKs ====="
           ls -la "$SDK_DIR/"
 
-      - name: Verify SDK structure
-        env:
-          THEOS: ${{ github.workspace }}/.theos
-        run: |
-          echo "=== SDK contents ==="
-          ls -la "$THEOS/sdks/iPhoneOS15.5.sdk/" 2>&1 | head -10
-          echo ""
-          echo "=== Frameworks ==="
-          ls "$THEOS/sdks/iPhoneOS15.5.sdk/System/Library/Frameworks/" 2>&1 | head -5 || echo "MISSING"
-
-      - name: Build tweak (override clang version)
+      - name: Build tweak (override TARGET, fail-fast on error)
         env:
           THEOS: ${{ github.workspace }}/.theos
         run: |
@@ -111,23 +150,22 @@ jobs:
 
           rm -rf packages
 
-          # Override TARGET để dùng clang bất kỳ (không yêu cầu clang 15.0)
+          # Patch Makefile để dùng clang từ toolchain
           sed -i.bak 's|iphone:clang:15.5:15.0|iphone:clang:latest:15.5|g' Makefile
           echo "=== Patched Makefile ==="
           grep "^TARGET" Makefile || true
 
-          make clean || true
+          echo "=== Cleaning ==="
+          make clean
+
+          echo "=== Building package ==="
           make package FINALPACKAGE=1 \
             THEOS_DEVICE_IP="" THEOS_DEVICE_PORT="" \
-            GO_EASY_ON_ME=1 \
-            THEOS_CLANG_VERSION="" 2>&1 | tee build.log || true
+            GO_EASY_ON_ME=1 2>&1 | tee build.log
 
           echo ""
-          echo "===== Build log tail ====="
-          tail -50 build.log || true
-          echo ""
           echo "===== Build output ====="
-          ls -la *.deb 2>/dev/null || ls -la packages/ 2>/dev/null || echo "NO .deb found"
+          ls -la *.deb 2>/dev/null || ls -la packages/ 2>/dev/null
 
       - name: Collect deb artifacts
         if: always()
