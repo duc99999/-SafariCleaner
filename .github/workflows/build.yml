@@ -28,7 +28,7 @@ jobs:
             libplist-utils libcurl4-openssl-dev libavahi-compat-libdnssd-dev \
             fakeroot dpkg dpkg-dev gnupg curl wget git xz-utils perl file unzip ca-certificates
 
-      - name: Build ldid from xerub source (uses g++ on Linux)
+      - name: Build ldid from xerub source
         run: |
           set -e
           cd /tmp
@@ -37,10 +37,9 @@ jobs:
           cd ldid
           chmod +x make.sh
           ./make.sh
-          ls -la ldid ldid2
           sudo cp ldid /usr/local/bin/ldid
           sudo chmod +x /usr/local/bin/ldid
-          ldid -h 2>&1 | head -5 || echo "ldid built and installed"
+          ldid -h 2>&1 | head -3 || echo "ldid installed"
 
       - name: Install Theos
         env:
@@ -49,6 +48,63 @@ jobs:
           git clone --depth=1 --recursive https://github.com/theos/theos.git "$THEOS"
           echo "THEOS=$THEOS" >> "$GITHUB_ENV"
           echo "$THEOS/bin" >> "$GITHUB_PATH"
+
+      - name: Install iOS SDK (try multiple sources)
+        env:
+          THEOS: ${{ github.workspace }}/.theos
+        run: |
+          set -e
+          SDK_DIR="$THEOS/sdks"
+          mkdir -p "$SDK_DIR"
+
+          # Thử nguồn 1: theos/sdks chính thức (cần git-lfs)
+          echo "=== Trying theos/sdks (official, needs git-lfs) ==="
+          if git clone --depth=1 https://github.com/theos/sdks.git "$SDK_DIR/.sdks-official" 2>/dev/null; then
+            cd "$SDK_DIR/.sdks-official"
+            if ls iPhoneOS*.sdk 2>/dev/null | head -1; then
+              SDK_FOUND=$(ls -d iPhoneOS*.sdk 2>/dev/null | head -1)
+              mv "$SDK_FOUND" "$SDK_DIR/"
+              echo "=== Got SDK from theos/sdks ==="
+            fi
+          fi
+          rm -rf "$SDK_DIR/.sdks-official"
+
+          # Nếu chưa có, thử nguồn 2: Procursus SDK
+          if ! ls "$SDK_DIR"/iPhoneOS*.sdk >/dev/null 2>&1; then
+            echo "=== Trying Procursus SDK ==="
+            cd /tmp
+            if curl -fsSL -o sdk.tar.xz \
+                "https://github.com/ProcursusTeam/SDKs/releases/download/v1.0/iPhoneOS15.5.sdk.tar.xz"; then
+              mkdir -p sdk-extract
+              cd sdk-extract
+              tar -xf ../sdk.tar.xz
+              SDK_FOUND=$(find . -maxdepth 2 -name "iPhoneOS*.sdk" -type d | head -1)
+              if [ -n "$SDK_FOUND" ]; then
+                mv "$SDK_FOUND" "$SDK_DIR/"
+                echo "=== Got SDK from Procursus ==="
+              fi
+            fi
+          fi
+
+          # Nếu vẫn chưa có, thử nguồn 3: build từ toolchain script của theos
+          if ! ls "$SDK_DIR"/iPhoneOS*.sdk >/dev/null 2>&1; then
+            echo "=== Trying theos toolchain SDK ==="
+            cd /tmp
+            if curl -fsSL -o toolchain.tar.xz \
+                "https://github.com/theos/theos/raw/master/toolchain.tar.xz"; then
+              mkdir -p tc-extract
+              cd tc-extract
+              tar -xf ../toolchain.tar.xz 2>/dev/null || true
+              SDK_FOUND=$(find . -maxdepth 3 -name "iPhoneOS*.sdk" -type d | head -1)
+              if [ -n "$SDK_FOUND" ]; then
+                mv "$SDK_FOUND" "$SDK_DIR/"
+                echo "=== Got SDK from theos toolchain ==="
+              fi
+            fi
+          fi
+
+          echo "===== SDKs available ====="
+          ls -la "$SDK_DIR"/iPhoneOS*.sdk 2>/dev/null || echo "NO SDK FOUND - build will fail"
 
       - name: Build tweak (tweak + pref bundle)
         env:
@@ -85,9 +141,9 @@ jobs:
         if: always()
         with:
           name: SafariCleaner-debs
-          path: |
-            artifacts/*.deb
-            artifacts/Packages
-            artifacts/Packages.gz
+        path: |
+          artifacts/*.deb
+          artifacts/Packages
+          artifacts/Packages.gz
           if-no-files-found: warn
           retention-days: 30
