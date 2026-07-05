@@ -2,7 +2,6 @@ THEOS_PACKAGE_NAME = safecleaner
 THEOS_DEVICE_IP =
 THEOS_DEVICE_PORT =
 
-# Toolchain & SDK cho iOS 14.5 (khớp workflow để tránh bị patch)
 TARGET := iphone:clang:latest:14.5
 ARCHS = arm64
 
