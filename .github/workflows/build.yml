@@ -24,20 +24,20 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            build-essential clang libssl-dev libplist-dev \
+            build-essential clang g++ libssl-dev libplist-dev \
             libplist-utils libcurl4-openssl-dev libavahi-compat-libdnssd-dev \
-            fakeroot dpkg dpkg-dev gnupg curl wget git xz-utils perl file unzip ca-certificates cmake
+            fakeroot dpkg dpkg-dev gnupg curl wget git xz-utils perl file unzip ca-certificates
 
-      - name: Build ldid from xerub source (Linux compatible)
+      - name: Build ldid from xerub source (uses g++ on Linux)
         run: |
           set -e
           cd /tmp
+          rm -rf ldid
           git clone --depth=1 https://github.com/xerub/ldid.git
           cd ldid
-          mkdir -p build
-          cd build
-          cmake ..
-          make -j$(nproc)
+          chmod +x make.sh
+          ./make.sh
+          ls -la ldid ldid2
           sudo cp ldid /usr/local/bin/ldid
           sudo chmod +x /usr/local/bin/ldid
           ldid -h 2>&1 | head -5 || echo "ldid built and installed"
