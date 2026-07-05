@@ -4,22 +4,25 @@
  * Triển khai class `SAFECleanerEngine` được khai báo trong Tweak.x.
  *
  * Tất cả các đường dẫn đều viết theo chuẩn **rootless jailbreak**:
- *   ~/Library  ->  /var/jb/var/mobile/Library (đối với daemon)
- *                 hoặc var/mobile/Containers/Data/Application/<UUID>/Library
- *                 (đối với app sandbox khi chạy trong MobileSafari)
+ * ~/Library -> /var/jb/var/mobile/Library (đối với daemon)
+ * hoặc var/mobile/Containers/Data/Application/ /Library
+ * (đối với app sandbox khi chạy trong MobileSafari)
  *
  * Để chạy đúng code dưới, tweak phải inject vào một process có quyền truy
  * cập vào cả 2 cây thư mục:
- *   - MobileSafari process: đọc container của chính nó (khi kill sẽ thất bại lock)
- *   - SpringBoard / safecleaner daemon: có quyền ghi /var/jb
+ * - MobileSafari process: đọc container của chính nó (khi kill sẽ thất bại lock)
+ * - SpringBoard / safecleaner daemon: có quyền ghi /var/jb
  *
  * Vì vậy, **wipe thực sự sẽ chạy trong SpringBoard** (qua lệnh launchctl).
  */
 
 #import <Foundation/Foundation.h>
-#import <UIKit/UIKit.h>
 #import <spawn.h>
-#import <sys/stat.h>
+#import <sys/wait.h>
+
+#ifndef kBackupsRoot
+#define kBackupsRoot @"/var/mobile/Documents/SafariCleaner"
+#endif
 
 @interface SAFECleanerEngine : NSObject
 + (BOOL)wipeSafariDataKeepingBackup:(BOOL)keepBackup;
@@ -37,12 +40,12 @@
     /*
      * Tìm data container của MobileSafari. Rootless chuẩn hóa:
      * /var/mobile/Containers/Data/Application/<UUID>/
-     *     Library/
-     *         Caches/com.apple.mobilesafari/
-     *         Cookies/Cookies.binarycookies
-     *         Safari/
-     *         Preferences/com.apple.mobilesafari.plist
-     *         WebKit/WebsiteData/
+     *   Library/
+     *     Caches/com.apple.mobilesafari/
+     *     Cookies/Cookies.binarycookies
+     *     Safari/
+     *     Preferences/com.apple.mobilesafari.plist
+     *     WebKit/WebsiteData/
      */
 
     NSString *containersRoot = @"/var/mobile/Containers/Data/Application";
@@ -53,7 +56,7 @@
 
     for (NSString *uuid in items) {
         NSString *metaPlist = [containersRoot stringByAppendingPathComponent:
-                               [uuid stringByAppendingPathComponent:@".com.apple.mobile_container_manager.metadata.plist"]];
+            [uuid stringByAppendingPathComponent:@".com.apple.mobile_container_manager.metadata.plist"]];
         NSDictionary *meta = [NSDictionary dictionaryWithContentsOfFile:metaPlist];
         if (meta && [meta[@"MCMMetadataIdentifier"] isEqualToString:@"com.apple.mobilesafari"]) {
             return [containersRoot stringByAppendingPathComponent:uuid];
@@ -69,7 +72,7 @@
     if (!items) return nil;
     for (NSString *uuid in items) {
         NSString *metaPlist = [containersRoot stringByAppendingPathComponent:
-                               [uuid stringByAppendingPathComponent:@".com.apple.mobile_container_manager.metadata.plist"]];
+            [uuid stringByAppendingPathComponent:@".com.apple.mobile_container_manager.metadata.plist"]];
         NSDictionary *meta = [NSDictionary dictionaryWithContentsOfFile:metaPlist];
         if (meta && [meta[@"MCMMetadataIdentifier"] isEqualToString:@"com.apple.mobilesafari"]) {
             return [containersRoot stringByAppendingPathComponent:uuid];
@@ -168,9 +171,9 @@
 
     // 0. Tạo backup nếu bật
     NSString *timestamp = [NSString stringWithFormat:@"%.0f",
-                           [[NSDate date] timeIntervalSince1970]];
+        [[NSDate date] timeIntervalSince1970]];
     NSString *backupDir = [kBackupsRoot stringByAppendingPathComponent:
-                           [@"backup-" stringByAppendingString:timestamp]];
+        [@"backup-" stringByAppendingString:timestamp]];
 
     BOOL isSpringBoard = [[[NSProcessInfo processInfo] processName] isEqualToString:@"SpringBoard"];
 
