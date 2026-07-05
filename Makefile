@@ -1,7 +1,7 @@
 THEOS_PACKAGE_NAME = safecleaner
 # Build cho rootless jailbreak (Dopamine / palera1n rootless / Cheyote)
 # Layout đã được cấu trúc lại dưới layout/var/jb/...
-TARGET := iphone:clang:15.5:15.0
+TARGET := iphone:clang:14.5:15.0
 ARCHS = arm64
 
 include $(THEOS)/makefiles/common.mk
