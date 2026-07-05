@@ -26,34 +26,21 @@ jobs:
           sudo apt-get install -y \
             build-essential clang libssl-dev libplist-dev \
             libplist-utils libcurl4-openssl-dev libavahi-compat-libdnssd-dev \
-            fakeroot dpkg dpkg-dev gnupg curl wget git xz-utils perl file unzip ca-certificates
+            fakeroot dpkg dpkg-dev gnupg curl wget git xz-utils perl file unzip ca-certificates cmake
 
-      - name: Install ldid (from Procursus)
+      - name: Build ldid from xerub source (Linux compatible)
         run: |
           set -e
           cd /tmp
-          curl -fsSL -o ldid.tar.gz \
-            "https://github.com/ProcursusTeam/Procursus/releases/download/3.0.2-2/ldid_3.0.2-2_iphoneos-arm64e.deb"
-          mkdir -p ldid-extract
-          cd ldid-extract
-          ar x ../ldid.tar.gz
-          tar -xf data.tar.* 2>/dev/null || tar -xf data.tar.xz 2>/dev/null || tar -xf data.tar.zst 2>/dev/null || true
-          find . -name "ldid" -type f -executable
-          sudo cp $(find . -name "ldid" -type f -executable | head -1) /usr/local/bin/ldid
-          sudo chmod +x /usr/local/bin/ldid
-          ldid -h 2>&1 | head -5 || echo "ldid installed"
-
-      - name: Install ldid from source (fallback)
-        if: failure()
-        run: |
-          set -e
-          cd /tmp
-          git clone --depth=1 https://github.com/sbingner/ldid.git
+          git clone --depth=1 https://github.com/xerub/ldid.git
           cd ldid
-          ./make.sh
+          mkdir -p build
+          cd build
+          cmake ..
+          make -j$(nproc)
           sudo cp ldid /usr/local/bin/ldid
           sudo chmod +x /usr/local/bin/ldid
-          ldid -h | head -5
+          ldid -h 2>&1 | head -5 || echo "ldid built and installed"
 
       - name: Install Theos
         env:
