@@ -57,19 +57,19 @@ jobs:
           SDK_DIR="$THEOS/sdks"
           mkdir -p "$SDK_DIR"
 
-          # Thử nguồn 1: theos/sdks chính thức (cần git-lfs)
-          echo "=== Trying theos/sdks (official, needs git-lfs) ==="
+          # Nguồn 1: theos/sdks chính thức (cần git-lfs)
+          echo "=== Trying theos/sdks (official) ==="
           if git clone --depth=1 https://github.com/theos/sdks.git "$SDK_DIR/.sdks-official" 2>/dev/null; then
             cd "$SDK_DIR/.sdks-official"
-            if ls iPhoneOS*.sdk 2>/dev/null | head -1; then
-              SDK_FOUND=$(ls -d iPhoneOS*.sdk 2>/dev/null | head -1)
+            if ls iPhoneOS*.sdk >/dev/null 2>&1; then
+              SDK_FOUND=$(ls -d iPhoneOS*.sdk | head -1)
               mv "$SDK_FOUND" "$SDK_DIR/"
               echo "=== Got SDK from theos/sdks ==="
             fi
           fi
           rm -rf "$SDK_DIR/.sdks-official"
 
-          # Nếu chưa có, thử nguồn 2: Procursus SDK
+          # Nguồn 2: Procursus SDK
           if ! ls "$SDK_DIR"/iPhoneOS*.sdk >/dev/null 2>&1; then
             echo "=== Trying Procursus SDK ==="
             cd /tmp
@@ -86,7 +86,7 @@ jobs:
             fi
           fi
 
-          # Nếu vẫn chưa có, thử nguồn 3: build từ toolchain script của theos
+          # Nguồn 3: theos toolchain bundle
           if ! ls "$SDK_DIR"/iPhoneOS*.sdk >/dev/null 2>&1; then
             echo "=== Trying theos toolchain SDK ==="
             cd /tmp
@@ -141,9 +141,9 @@ jobs:
         if: always()
         with:
           name: SafariCleaner-debs
-        path: |
-          artifacts/*.deb
-          artifacts/Packages
-          artifacts/Packages.gz
+          path: |
+            artifacts/*.deb
+            artifacts/Packages
+            artifacts/Packages.gz
           if-no-files-found: warn
           retention-days: 30
