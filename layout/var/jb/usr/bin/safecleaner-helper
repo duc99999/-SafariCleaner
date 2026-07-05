@@ -1,0 +1,31 @@
+#!/bin/sh
+# safecleaner-helper
+#
+# Helper script được gọi khi người dùng bấm nút Wipe.
+# Đặt tại /var/jb/usr/bin/safecleaner-helper
+# Đảm bảo chạy được dưới quyền mobile (không cần root với Procursus rootless).
+
+set -e
+
+LOG="/var/mobile/Documents/SafariCleaner/last_wipe.log"
+mkdir -p "$(dirname "$LOG")"
+echo "[$(date)] safecleaner-helper triggered" >> "$LOG"
+
+# Đợi Safari thoát hẳn
+sleep 2
+
+# Tìm container của MobileSafari
+SAFARI_DATA=$(plutil -extract MCMMetadataIdentifier raw -o - \
+    /var/mobile/Containers/Data/Application/*/.com.apple.mobile_container_manager.metadata.plist \
+    2>/dev/null | head -n1)
+
+# Xóa thẳng qua shell (an toàn vì Safari đã bị kill ở tweak)
+find /var/mobile/Containers/Data/Application -name "com.apple.mobilesafari" \
+    -path "*/Library/Caches/*" -exec rm -rf {} \; 2>/dev/null || true
+find /var/mobile/Containers/Data/Application -path "*Library/WebKit*" \
+    -type d -exec rm -rf {} \; 2>/dev/null || true
+find /var/mobile/Containers/Data/Application -path "*Library/Cookies*" \
+    -type f -exec rm -f {} \; 2>/dev/null || true
+
+echo "[$(date)] safecleaner-helper done" >> "$LOG"
+exit 0

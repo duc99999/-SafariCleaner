@@ -4,25 +4,22 @@
  * Triển khai class `SAFECleanerEngine` được khai báo trong Tweak.x.
  *
  * Tất cả các đường dẫn đều viết theo chuẩn **rootless jailbreak**:
- * ~/Library -> /var/jb/var/mobile/Library (đối với daemon)
- * hoặc var/mobile/Containers/Data/Application/<UUID>/Library
- * (đối với app sandbox khi chạy trong MobileSafari)
+ *   ~/Library  ->  /var/jb/var/mobile/Library (đối với daemon)
+ *                 hoặc var/mobile/Containers/Data/Application/<UUID>/Library
+ *                 (đối với app sandbox khi chạy trong MobileSafari)
  *
  * Để chạy đúng code dưới, tweak phải inject vào một process có quyền truy
  * cập vào cả 2 cây thư mục:
- * - MobileSafari process: đọc container của chính nó (khi kill sẽ thất bại lock)
- * - SpringBoard / safecleaner daemon: có quyền ghi /var/jb
+ *   - MobileSafari process: đọc container của chính nó (khi kill sẽ thất bại lock)
+ *   - SpringBoard / safecleaner daemon: có quyền ghi /var/jb
  *
  * Vì vậy, **wipe thực sự sẽ chạy trong SpringBoard** (qua lệnh launchctl).
  */
 
-#import <Foundation/Foundation.h>
+#import "SAFECleanerRoot.h"
+#import <UIKit/UIKit.h>
 #import <spawn.h>
-#import <sys/wait.h>
-
-#ifndef kBackupsRoot
-#define kBackupsRoot @"/var/mobile/Documents/SafariCleaner"
-#endif
+#import <sys/stat.h>
 
 @interface SAFECleanerEngine : NSObject
 + (BOOL)wipeSafariDataKeepingBackup:(BOOL)keepBackup;
@@ -37,6 +34,17 @@
 #pragma mark - Path discovery
 
 + (NSString *)safariDataContainerPath {
+    /*
+     * Tìm data container của MobileSafari. Rootless chuẩn hóa:
+     * /var/mobile/Containers/Data/Application/<UUID>/
+     *     Library/
+     *         Caches/com.apple.mobilesafari/
+     *         Cookies/Cookies.binarycookies
+     *         Safari/
+     *         Preferences/com.apple.mobilesafari.plist
+     *         WebKit/WebsiteData/
+     */
+
     NSString *containersRoot = @"/var/mobile/Containers/Data/Application";
     NSFileManager *fm = [NSFileManager defaultManager];
     NSError *err = nil;
@@ -45,7 +53,7 @@
 
     for (NSString *uuid in items) {
         NSString *metaPlist = [containersRoot stringByAppendingPathComponent:
-            [uuid stringByAppendingPathComponent:@".com.apple.mobile_container_manager.metadata.plist"]];
+                               [uuid stringByAppendingPathComponent:@".com.apple.mobile_container_manager.metadata.plist"]];
         NSDictionary *meta = [NSDictionary dictionaryWithContentsOfFile:metaPlist];
         if (meta && [meta[@"MCMMetadataIdentifier"] isEqualToString:@"com.apple.mobilesafari"]) {
             return [containersRoot stringByAppendingPathComponent:uuid];
@@ -61,7 +69,7 @@
     if (!items) return nil;
     for (NSString *uuid in items) {
         NSString *metaPlist = [containersRoot stringByAppendingPathComponent:
-            [uuid stringByAppendingPathComponent:@".com.apple.mobile_container_manager.metadata.plist"]];
+                               [uuid stringByAppendingPathComponent:@".com.apple.mobile_container_manager.metadata.plist"]];
         NSDictionary *meta = [NSDictionary dictionaryWithContentsOfFile:metaPlist];
         if (meta && [meta[@"MCMMetadataIdentifier"] isEqualToString:@"com.apple.mobilesafari"]) {
             return [containersRoot stringByAppendingPathComponent:uuid];
@@ -73,6 +81,10 @@
 #pragma mark - Process control
 
 + (void)killSafariProcesses {
+    /*
+     * Kill MobileSafari và SafariViewService. Dùng killall2 (Procursus) hoặc killall.
+     * Rootless: killall nằm ở /var/jb/usr/bin/killall2
+     */
     NSArray *cmds = @[
         @"/var/jb/usr/bin/killall2", @"-9", @"MobileSafari",
         @"/var/jb/usr/bin/killall2", @"-9", @"SafariViewService",
@@ -85,6 +97,7 @@
         NSString *path = cmds[i];
         NSArray *args = @[cmds[i+1], cmds[i+2]];
         if (![[NSFileManager defaultManager] isExecutableFileAtPath:path]) {
+            // Fallback sang /usr/bin/killall nếu không có killall2
             path = @"/usr/bin/killall";
         }
         pid_t pid;
@@ -123,6 +136,7 @@
     if ([fm isDeletableFileAtPath:path]) {
         return [fm removeItemAtPath:path error:&err];
     }
+    // Dùng rm -rf nếu file system không cho qua Foundation
     pid_t pid;
     char *argv[] = {
         (char *)"/var/jb/usr/bin/rm",
@@ -150,11 +164,13 @@
 #pragma mark - Wipe logic
 
 + (BOOL)wipeSafariDataKeepingBackup:(BOOL)keepBackup {
+    NSFileManager *fm = [NSFileManager defaultManager];
+
     // 0. Tạo backup nếu bật
     NSString *timestamp = [NSString stringWithFormat:@"%.0f",
-        [[NSDate date] timeIntervalSince1970]];
+                           [[NSDate date] timeIntervalSince1970]];
     NSString *backupDir = [kBackupsRoot stringByAppendingPathComponent:
-        [@"backup-" stringByAppendingString:timestamp]];
+                           [@"backup-" stringByAppendingString:timestamp]];
 
     BOOL isSpringBoard = [[[NSProcessInfo processInfo] processName] isEqualToString:@"SpringBoard"];
 
@@ -164,14 +180,18 @@
         NSString *lib = [dataRoot stringByAppendingPathComponent:@"Library"];
 
         NSArray *pathsToWipe = @[
+            // Cookies / HSTS
             [lib stringByAppendingPathComponent:@"Cookies"],
             [lib stringByAppendingPathComponent:@"Cookies/Cookies.binarycookies"],
+            // WebKit WebsiteData (cookies, IndexedDB, localStorage, sessionStorage, service worker)
             [lib stringByAppendingPathComponent:@"WebKit"],
             [lib stringByAppendingPathComponent:@"WebKit/WebsiteData"],
+            // Cache (Safari + WebKit)
             [lib stringByAppendingPathComponent:@"Caches/com.apple.mobilesafari"],
             [lib stringByAppendingPathComponent:@"Caches/com.apple.WebKit"],
             [lib stringByAppendingPathComponent:@"Caches/com.apple.WebKit.Networking"],
             [lib stringByAppendingPathComponent:@"Caches/com.apple.WebKit.WebContent"],
+            // Safari's own DBs (history, reading list, recently visited, autofill)
             [lib stringByAppendingPathComponent:@"Safari"],
             [lib stringByAppendingPathComponent:@"Safari/Bookmarks.plist"],
             [lib stringByAppendingPathComponent:@"Safari/History.db"],
@@ -188,6 +208,7 @@
             [lib stringByAppendingPathComponent:@"Safari/BrowserState.db"],
             [lib stringByAppendingPathComponent:@"Safari/SuspendTabs.plist"],
             [lib stringByAppendingPathComponent:@"Safari/LastSession.plist"],
+            // Preferences (com.apple.mobilesafari + WebKit)
             [lib stringByAppendingPathComponent:@"Preferences/com.apple.mobilesafari.plist"],
             [lib stringByAppendingPathComponent:@"Preferences/com.apple.SafariViewService.plist"],
             [lib stringByAppendingPathComponent:@"Preferences/com.apple.WebKit.plist"],
@@ -205,6 +226,8 @@
     }
 
     // ---------- B. Xóa cfprefsd state cho Safari / WebKit ----------
+    // Để xóa sạch preferences, ta xóa thẳng file plist trong
+    // /var/mobile/Library/Preferences/ rồi restart cfprefsd.
     NSArray *cfKeyPaths = @[
         @"com.apple.mobilesafari.plist",
         @"com.apple.SafariViewService.plist",
@@ -225,6 +248,7 @@
 
     // ---------- C. Reset SSL session cache (qua cfprefsd) ----------
     if (isSpringBoard) {
+        // Restart cfprefsd để reload cache
         pid_t pid;
         char *argv[] = {
             (char *)"/var/jb/usr/bin/killall2",

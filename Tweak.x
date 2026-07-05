@@ -2,10 +2,10 @@
  * SafariCleaner - Tweak.x
  *
  * Hook vào SpringBoard để:
- * 1. Đăng ký Darwin notification listener nhận lệnh wipe từ Pref pane
- * 2. Khi có lệnh -> gọi helper SAFECleanerEngine để thực thi
+ *   1. Đăng ký Darwin notification listener nhận lệnh wipe từ Pref pane
+ *   2. Khi có lệnh -> gọi helper SAFECleanerEngine để thực thi
  *
- * Helper SAFECleanerEngine được định nghĩa trong SAFECleanerRoot.m
+ * Helper SAFECleanerEngine được định nghĩa trong SAFECleanerRoot.x
  * (Theos biên dịch cả 2 file vào cùng dylib).
  *
  * Hỗ trợ rootless jailbreak (Dopamine / palera1n):
@@ -15,6 +15,7 @@
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
+#import <CoreFoundation/CoreFoundation.h>
 #import <substrate.h>
 
 // MARK: - Forward declarations
@@ -29,14 +30,15 @@
 // MARK: - Darwin notification observer
 // Lưu ý: Darwin notify CHỈ truyền name, không có userInfo
 // -> nên lưu keepBackup qua global atomic
+
 static _Atomic BOOL gKeepBackup = 1;
 
 static void WipePrefsObserver(CFNotificationCenterRef center,
-                               void *observer,
-                               CFStringRef name,
-                               const void *object,
-                               CFDictionaryRef userInfo) {
-    NSLog(@"[SafariCleaner] Received wipe request (keepBackup=%d)", gKeepBackup);
+                              void *observer,
+                              CFStringRef name,
+                              const void *object,
+                              CFDictionaryRef userInfo) {
+    HBLogDebug(@"[SafariCleaner] Received wipe request (keepBackup=%d)", gKeepBackup);
 
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         // Kill Safari first (bắt buộc, vì iOS giữ file lock trên database)
@@ -46,7 +48,7 @@ static void WipePrefsObserver(CFNotificationCenterRef center,
         [NSThread sleepForTimeInterval:1.5];
 
         BOOL ok = [SAFECleanerEngine wipeSafariDataKeepingBackup:gKeepBackup];
-        NSLog(@"[SafariCleaner] Wipe %@", ok ? @"OK" : @"FAILED");
+        HBLogDebug(@"[SafariCleaner] Wipe %@", ok ? @"OK" : @"FAILED");
 
         if (ok) {
             [SAFECleanerEngine restartSafari];
@@ -67,7 +69,6 @@ void SafariCleaner_SetKeepBackup(int keepBackup) {
 // MARK: - SpringBoard hook
 
 %hook SpringBoard
-
 - (void)applicationDidFinishLaunching:(id)arg1 {
     %orig;
 
@@ -80,16 +81,15 @@ void SafariCleaner_SetKeepBackup(int keepBackup) {
         NULL,
         CFNotificationSuspensionBehaviorDeliverImmediately);
 
-    NSLog(@"[SafariCleaner] SpringBoard hook installed");
+    HBLogDebug(@"[SafariCleaner] SpringBoard hook installed");
 }
-
 %end
 
 // MARK: - Constructor (chạy ngay khi dylib được inject)
 
 __attribute__((constructor))
 static void SafariCleanerInit(void) {
-    NSLog(@"[SafariCleaner] Loaded into process: %@",
+    HBLogDebug(@"[SafariCleaner] Loaded into process: %@",
         [[NSProcessInfo processInfo] processName]);
 
     // Bảo đảm listener cũng được đăng ký khi tweak inject vào process khác
