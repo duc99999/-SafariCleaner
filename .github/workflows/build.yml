@@ -26,7 +26,7 @@ jobs:
           sudo apt-get install -y \
             build-essential clang g++ libssl-dev libplist-dev \
             libplist-utils libcurl4-openssl-dev libavahi-compat-libdnssd-dev \
-            fakeroot dpkg dpkg-dev gnupg curl wget git xz-utils perl file unzip ca-certificates zstd
+            fakeroot dpkg dpkg-dev gnupg curl wget git xz-utils perl file unzip ca-certificates zstd dos2unix
 
       - name: Install Theos
         env:
@@ -95,6 +95,40 @@ jobs:
 
           echo "=== Installed SDKs ==="
           ls -la "$SDK_DIR/"
+
+      - name: Convert text files to Unix line endings (fix Windows CRLF)
+        run: |
+          echo "=== Files with Windows line endings ==="
+          find . -type f \( \
+              -path "./layout/*" -o \
+              -name "control" -o \
+              -name "Makefile" -o \
+              -name "*.plist" -o \
+              -name "*.l" -o \
+              -name "*.x" -o \
+              -name "*.xm" -o \
+              -name "*.mm" -o \
+              -name "*.m" -o \
+              -name "*.h" -o \
+              -name "*.cpp" -o \
+              -name "*.c" \
+          \) -print0 2>/dev/null \
+            | xargs -0 -I{} grep -l $'\r' "{}" 2>/dev/null \
+            | tee /tmp/crlf_files.txt || true
+
+          echo ""
+          echo "=== Converting CRLF -> LF ==="
+          xargs -a /tmp/crlf_files.txt -d '\n' dos2unix 2>&1 || true
+
+          echo ""
+          echo "=== Verify no more CRLF ==="
+          REMAINING=$(find . -type f \( \
+              -path "./layout/*" -o \
+              -name "control" -o \
+              -name "Makefile" \
+          \) -print0 2>/dev/null \
+            | xargs -0 -I{} grep -l $'\r' "{}" 2>/dev/null | wc -l)
+          echo "Files still with CRLF: $REMAINING"
 
       - name: Build tweak (override TARGET)
         env:
