@@ -1,0 +1,13 @@
+#!/bin/sh
+# postrm cho safecleaner
+set -e
+
+# Refresh Preferences
+if [ -x /var/jb/usr/bin/uicache ]; then
+    /var/jb/usr/bin/uicache -p /var/jb/Library/PreferenceBundles/SAFECleanerPref.bundle 2>/dev/null || true
+fi
+if [ -x /var/jb/usr/bin/sbutil ]; then
+    /var/jb/usr/bin/sbutil -restart 2>/dev/null || true
+fi
+
+exit 0

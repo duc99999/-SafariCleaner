@@ -1,0 +1,20 @@
+#!/bin/sh
+# postinst cho safecleaner
+set -e
+
+# Đăng ký bundle vào Preferences (rootless: /var/jb/Library/PreferenceBundles/)
+if [ -d /var/jb/Library/PreferenceBundles/SAFECleanerPref.bundle ]; then
+    /var/jb/usr/bin/uicache -p /var/jb/Library/PreferenceBundles/SAFECleanerPref.bundle || true
+fi
+
+# Tạo thư mục backup nếu chưa có
+mkdir -p /var/mobile/Documents/SafariCleaner
+chown mobile:mobile /var/mobile/Documents/SafariCleaner
+
+# Respring nhẹ để tweak load (SpringBoard sẽ load tweak trong respring)
+if [ -x /var/jb/usr/bin/sbutil ]; then
+    /var/jb/usr/bin/sbutil -restart || true
+fi
+
+echo "SafariCleaner installed"
+exit 0

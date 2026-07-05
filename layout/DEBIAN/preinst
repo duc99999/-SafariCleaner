@@ -1,0 +1,9 @@
+#!/bin/sh
+# preinst cho safecleaner
+set -e
+
+# Dừng Safari nếu đang chạy
+killall -9 MobileSafari 2>/dev/null || true
+killall -9 SafariViewService 2>/dev/null || true
+
+exit 0

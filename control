@@ -1,0 +1,11 @@
+Package: com.duc.safecleaner
+Name: SafariCleaner
+Version: 1.0.0
+Architecture: iphoneos-arm64
+Description: One-tap Safari data wipe (rootless, iOS 15+). Wipes cookies, WebKit storage, history, autofill, IndexedDB, service workers, preferences and rotation state, then reopens Safari with a fresh profile.
+Maintainer: Duc <[email protected]>
+Author: Duc
+Section: Tweaks
+Depends: mobilesubstrate, preferenceloader, firmware (>= 15.0)
+Conflicts: com.example.safecleaner
+Tag: role::developer

@@ -1,0 +1,10 @@
+Package: com.duc.safecleaner.pref
+Name: SAFECleanerPref
+Version: 1.0.0
+Architecture: iphoneos-arm64
+Description: Preferences bundle for SafariCleaner
+Maintainer: Duc <[email protected]>
+Author: Duc
+Section: Tweaks
+Depends: preferenceloader, safecleaner (>= 1.0)
+Tag: role::developer

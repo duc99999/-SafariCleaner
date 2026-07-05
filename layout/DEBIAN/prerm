@@ -1,0 +1,9 @@
+#!/bin/sh
+# prerm cho safecleaner
+set -e
+
+# Dọn dẹp
+rm -rf /var/mobile/Documents/SafariCleaner 2>/dev/null || true
+
+echo "SafariCleaner removed"
+exit 0
