@@ -1,0 +1,106 @@
+name: Build SafariCleaner
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build tweak package
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential clang libssl-dev libplist-dev \
+            libplist-utils libcurl4-openssl-dev libavahi-compat-libdnssd-dev \
+            fakeroot dpkg dpkg-dev gnupg curl wget git xz-utils perl file unzip ca-certificates
+
+      - name: Install ldid (from Procursus)
+        run: |
+          set -e
+          cd /tmp
+          curl -fsSL -o ldid.tar.gz \
+            "https://github.com/ProcursusTeam/Procursus/releases/download/3.0.2-2/ldid_3.0.2-2_iphoneos-arm64e.deb"
+          mkdir -p ldid-extract
+          cd ldid-extract
+          ar x ../ldid.tar.gz
+          tar -xf data.tar.* 2>/dev/null || tar -xf data.tar.xz 2>/dev/null || tar -xf data.tar.zst 2>/dev/null || true
+          find . -name "ldid" -type f -executable
+          sudo cp $(find . -name "ldid" -type f -executable | head -1) /usr/local/bin/ldid
+          sudo chmod +x /usr/local/bin/ldid
+          ldid -h 2>&1 | head -5 || echo "ldid installed"
+
+      - name: Install ldid from source (fallback)
+        if: failure()
+        run: |
+          set -e
+          cd /tmp
+          git clone --depth=1 https://github.com/sbingner/ldid.git
+          cd ldid
+          ./make.sh
+          sudo cp ldid /usr/local/bin/ldid
+          sudo chmod +x /usr/local/bin/ldid
+          ldid -h | head -5
+
+      - name: Install Theos
+        env:
+          THEOS: ${{ github.workspace }}/.theos
+        run: |
+          git clone --depth=1 --recursive https://github.com/theos/theos.git "$THEOS"
+          echo "THEOS=$THEOS" >> "$GITHUB_ENV"
+          echo "$THEOS/bin" >> "$GITHUB_PATH"
+
+      - name: Build tweak (tweak + pref bundle)
+        env:
+          THEOS: ${{ github.workspace }}/.theos
+        run: |
+          set -e
+          export THEOS="${{ env.THEOS }}"
+          export PATH="$THEOS/bin:$PATH"
+
+          cd "$GITHUB_WORKSPACE"
+
+          rm -rf packages
+          make clean || true
+          make package FINALPACKAGE=1 \
+            THEOS_DEVICE_IP="" THEOS_DEVICE_PORT="" \
+            GO_EASY_ON_ME=1
+
+          echo "===== Build output ====="
+          ls -la *.deb 2>/dev/null || ls -la packages/ 2>/dev/null || true
+
+      - name: Collect deb artifacts
+        if: always()
+        run: |
+          set -e
+          mkdir -p artifacts
+          find . -type f -name "*.deb" -exec cp -v {} artifacts/ \; || true
+          dpkg-scanpackages artifacts /dev/null > artifacts/Packages 2>/dev/null || true
+          gzip -9kf artifacts/Packages 2>/dev/null || true
+          echo "===== Artifacts ====="
+          ls -la artifacts/
+
+      - name: Upload debs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SafariCleaner-debs
+          path: |
+            artifacts/*.deb
+            artifacts/Packages
+            artifacts/Packages.gz
+          if-no-files-found: warn
+          retention-days: 30
