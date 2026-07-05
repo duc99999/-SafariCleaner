@@ -18,5 +18,7 @@ SafariCleaner_PRIVATE_FRAMEWORKS = MobileSafari SafariFoundation WebKit WebKitLe
 SafariCleaner_LDFLAGS = -lsubstrate -ldl
 SafariCleaner_INSTALL_PATH = /var/jb/Library/MobileSubstrate/DynamicLibraries
 
-SUBPROJECTS += SAFECleanerPref
 include $(THEOS_MAKE_PATH)/aggregate.mk
+
+SUBPROJECTS += SAFECleanerPref
+include $(THEOS_MAKE_PATH)/subproject.mk
