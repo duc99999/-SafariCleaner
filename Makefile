@@ -16,6 +16,7 @@ SafariCleaner_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -std=gnu11
 SafariCleaner_FRAMEWORKS = UIKit Foundation Security
 SafariCleaner_PRIVATE_FRAMEWORKS = MobileSafari SafariFoundation WebKit WebKitLegacy Preferences
 SafariCleaner_LDFLAGS = -lsubstrate -ldl
+SafariCleaner_INSTALL_PATH = /var/jb/Library/MobileSubstrate/DynamicLibraries
 
 SUBPROJECTS += SAFECleanerPref
 include $(THEOS_MAKE_PATH)/aggregate.mk
